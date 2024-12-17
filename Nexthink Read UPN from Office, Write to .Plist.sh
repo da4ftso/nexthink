@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# don'r run this if you're already a Jamf Connect environment
+# use at your own risk
+
 # parse Office 365 for email
 # write out to com.jamf.connect.state.plist
 # touch an empty file if no email address found so that NT RA doesn't bail unexpectedly?
