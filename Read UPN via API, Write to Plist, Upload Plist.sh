@@ -13,7 +13,7 @@ url="https://your.jamfpro.tld"
 currentUser=$(stat -f %Su "/dev/console")
 currentUserHome=$(dscl . read "/Users/$currentUser" NFSHomeDirectory | awk ' { print $NF } ')
 
-id=$(/usr/local/bin/jamf recon | awk -F'>|<' '{ print $3 }' | tr -d '\n')
+serial=$(ioreg -c IOPlatformExpertDevice -d 2 | awk -F\" '/IOPlatformSerialNumber/{print $(NF-1)}')
 
 plistPath="${currentUserHome}"/Library/Preferences/com.jamf.connect.state.plist
 
@@ -32,9 +32,9 @@ checkTokenExpiration() {
     nowEpochUTC=$(date -j -f "%Y-%m-%dT%T" "$(date -u +"%Y-%m-%dT%T")" +"%s")
     if [[ tokenExpirationEpoch -gt nowEpochUTC ]]
     then
-        echo "Token valid until the following epoch time: " "$tokenExpirationEpoch"
+        echo "Token valid until epoch time: " "$tokenExpirationEpoch"
     else
-        echo "No valid token available, getting new token"
+        echo "No valid token, retrying"
         getBearerToken
         sleep 3
     fi
@@ -55,6 +55,10 @@ invalidateToken() {
 	fi
 }
 
+getDeviceID() {
+	id=$(curl -s -H "Accept: xml/text" -H "Authorization: Bearer ${bearerToken}" "$url"/JSSResource/computers/serialnumber/"$serial" | xmllint --xpath '/computer/general/id/text()' -)
+}
+
 getEmail() {
 	email=$(curl -s -X GET $url/api/v1/computers-inventory/"${id}"?section=USER_AND_LOCATION -H 'accept: application/json' -H "Authorization: Bearer ${bearerToken}" | awk '/email/ { print $NF }' | sed 's/[,]//g' | sed 's/\r$//' )
 }
@@ -67,13 +71,15 @@ writeToPlist() {
 
 uploadPlist() {
         ditto "$plistPath" /var/tmp
-		curl -s -k -H "Authorization: Bearer ${bearerToken}" -X POST $url/api/v1/computers-inventory/"${id}"/attachments -H 'accept: application/json' -H 'Content-Type: multipart/form-data' -F 'file=@/var/tmp/com.jamf.connect.state.plist'
+	curl -s -k -H "Authorization: Bearer ${bearerToken}" -X POST $url/api/v1/computers-inventory/"${id}"/attachments -H 'accept: application/json' -H 'Content-Type: multipart/form-data' -F 'file=@/var/tmp/com.jamf.connect.state.plist'
         rm /var/tmp/com.jamf.connect.state.plist
 }
 
 getBearerToken
 
 checkTokenExpiration
+
+getDeviceID
 
 getEmail
 
